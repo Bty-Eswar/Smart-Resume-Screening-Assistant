@@ -159,13 +159,20 @@ export default function Dashboard() {
 
   if (error && !ranking) {
     return (
-      <div className="glass-card" style={{ padding: "32px", textAlign: "center" }}>
-        <AlertTriangle size={40} color="#ef4444" style={{ margin: "0 auto 16px" }} />
-        <h3 style={{ fontSize: "20px", color: "#f87171", marginBottom: "8px" }}>Screening Error</h3>
-        <p style={{ color: "var(--text-secondary)", marginBottom: "20px" }}>{error}</p>
-        <Link to={`/jobs/${jobId}/upload`} className="btn btn-primary">
-          Back to Resume Upload
-        </Link>
+      <div className="glass-card" style={{ padding: "40px", textAlign: "center", maxWidth: "600px", margin: "40px auto" }}>
+        <AlertTriangle size={48} color="#ef4444" style={{ margin: "0 auto 16px" }} />
+        <h3 style={{ fontSize: "22px", color: "#f87171", marginBottom: "8px" }}>Screening Not Found</h3>
+        <p style={{ color: "var(--text-secondary)", marginBottom: "24px" }}>
+          {error.includes("not found") ? "This job has not been created or screened yet on this server." : error}
+        </p>
+        <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+          <Link to="/" className="btn btn-secondary">
+            Browse Jobs
+          </Link>
+          <Link to="/jobs/new" className="btn btn-primary">
+            + Create New Job
+          </Link>
+        </div>
       </div>
     );
   }

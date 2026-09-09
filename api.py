@@ -103,6 +103,89 @@ def extract_draft_requirements(jd_text: str) -> list[str]:
     return candidate_reqs
 
 
+def ensure_seed_job() -> Job | None:
+    """Auto-seed canonical sample job if not yet created so demo links work out of the box."""
+    job_id = "job_af87c8e68eb50d59278ad54f6cadf9c1"
+    if job_id in _job_store:
+        existing = _job_store[job_id]
+        if existing.ranking is not None:
+            return existing
+
+    title = "Mid-Level Backend Engineer"
+    jd_text = (
+        "Mid-Level Backend Engineer\n"
+        "- 3+ years of professional backend development experience with Python\n"
+        "- Experience designing and maintaining RESTful APIs and PostgreSQL databases\n"
+        "- Hands-on experience with Docker containerization and CI/CD pipelines\n"
+        "- Working knowledge of Redis caching and distributed asynchronous task queues\n"
+        "- Solid understanding of Git version control, unit testing, and agile team workflows"
+    )
+    norm_jd = normalize_ws(jd_text)
+    jd_sha = hashlib.sha256(norm_jd.encode("utf-8")).hexdigest()
+
+    candidates = extract_draft_requirements(jd_text)
+    raw_reqs = tuple({"text": text, "weight": 100} for text in candidates)
+    reqs = build_requirements(raw_reqs, Sha256(jd_sha))
+
+    resume_dir = Path(tempfile.gettempdir()) / "shortlist_jobs" / job_id / "resumes"
+    resume_dir.mkdir(parents=True, exist_ok=True)
+
+    eval_dir = Path("eval")
+    for i in range(1, 6):
+        sample_file = eval_dir / f"resume_holdout_0{i}.pdf"
+        if sample_file.exists():
+            try:
+                shutil.copy2(sample_file, resume_dir / sample_file.name)
+            except Exception:
+                pass
+
+    outcomes = ingest_resumes(resume_dir)
+    valid_resumes = tuple(o.resume for o in outcomes if o.status == ParseStatus.OK and o.resume is not None)
+    unparsed_outcomes = tuple(o for o in outcomes if o.status != ParseStatus.OK or o.resume is None)
+
+    if not valid_resumes:
+        job = Job(
+            job_id=job_id,
+            title=title,
+            jd_text=jd_text,
+            jd_sha256=jd_sha,
+            requirements=reqs,
+            resume_dir=resume_dir,
+            parse_outcomes=outcomes,
+            ranking=None,
+            status="draft",
+            ranker_used=None,
+            all_rankings=None,
+        )
+        _job_store[job_id] = job
+        return job
+
+    job_embeddings, resume_embeddings = compute_job_embeddings(jd_text, valid_resumes)
+    r0 = rank_lexical(valid_resumes, reqs, unparsed=unparsed_outcomes, k=10)
+    r1 = rank_embedding(resume_embeddings, job_embeddings, unparsed=unparsed_outcomes, k=10)
+    all_rankings = {
+        "r0_lexical": r0,
+        "r1_embedding": r1,
+        "r2_llm": r0,
+    }
+
+    job = Job(
+        job_id=job_id,
+        title=title,
+        jd_text=jd_text,
+        jd_sha256=jd_sha,
+        requirements=reqs,
+        resume_dir=resume_dir,
+        parse_outcomes=outcomes,
+        ranking=r0,
+        status="ranked",
+        ranker_used="compare_all",
+        all_rankings=all_rankings,
+    )
+    _job_store[job_id] = job
+    return job
+
+
 
 class CreateJobRequest(BaseModel):
     title: str
@@ -273,8 +356,14 @@ async def upload_resumes(job_id: str, files: list[UploadFile] = File(...)):
 def get_job_detail(job_id: str):
     """Return complete state for a job."""
     if job_id not in _job_store:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
-    job = _job_store[job_id]
+        if job_id == "job_af87c8e68eb50d59278ad54f6cadf9c1":
+            job = ensure_seed_job()
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        else:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    else:
+        job = _job_store[job_id]
 
     parse_summary = None
     if job.parse_outcomes is not None:
@@ -313,6 +402,12 @@ def get_job_detail(job_id: str):
 @app.get("/api/jobs")
 def list_jobs():
     """Return overview of all jobs."""
+    if "job_af87c8e68eb50d59278ad54f6cadf9c1" not in _job_store:
+        try:
+            ensure_seed_job()
+        except Exception:
+            pass
+
     jobs_list = []
     for job in _job_store.values():
         cand_count = (
@@ -632,7 +727,10 @@ def run_job_pipeline(job_id: str, body: RunJobRequest | None = None):
 def get_job_ranking(job_id: str, ranker: str | None = None):
     """Return ranking for a specific job, with support for selecting ranker view."""
     if job_id not in _job_store:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        if job_id == "job_af87c8e68eb50d59278ad54f6cadf9c1":
+            ensure_seed_job()
+        if job_id not in _job_store:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
     job = _job_store[job_id]
 
     if job.ranking is None and not job.all_rankings:
