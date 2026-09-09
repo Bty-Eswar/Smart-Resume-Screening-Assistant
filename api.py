@@ -130,35 +130,77 @@ def ensure_seed_job() -> Job | None:
     resume_dir = Path(tempfile.gettempdir()) / "shortlist_jobs" / job_id / "resumes"
     resume_dir.mkdir(parents=True, exist_ok=True)
 
-    eval_dir = Path("eval")
-    for i in range(1, 6):
-        sample_file = eval_dir / f"resume_holdout_0{i}.pdf"
-        if sample_file.exists():
-            try:
-                shutil.copy2(sample_file, resume_dir / sample_file.name)
-            except Exception:
-                pass
+    # Synthetic demo resumes — hardcoded so seeding never depends on PDF parsing or eval files
+    _SEED_RESUME_DATA = [
+        (
+            "alice_chen.pdf",
+            "Alice Chen | alice@example.com\n"
+            "Senior Software Engineer with 5 years of Python backend development. "
+            "Built RESTful APIs using FastAPI and Django REST Framework. "
+            "Managed PostgreSQL databases with migrations and query optimization. "
+            "Deployed microservices using Docker and Kubernetes on AWS CI/CD pipelines. "
+            "Implemented Redis caching layer reducing p95 latency by 40%. "
+            "Strong Git workflow: branching strategy, code review, unit testing with pytest. "
+            "Led agile sprint ceremonies and collaborated with cross-functional teams.",
+        ),
+        (
+            "bob_martinez.pdf",
+            "Bob Martinez | bob@example.com\n"
+            "Backend Developer with 3 years experience in Python and Flask. "
+            "Developed REST APIs integrated with PostgreSQL and SQLite databases. "
+            "Basic Docker containerization for local development environments. "
+            "Familiar with GitHub Actions for CI/CD pipeline automation. "
+            "Used Redis for session caching in production applications. "
+            "Practiced test-driven development with unittest and pytest frameworks. "
+            "Worked in agile scrum teams with two-week sprint cycles.",
+        ),
+        (
+            "carol_wu.pdf",
+            "Carol Wu | carol@example.com\n"
+            "Full-Stack Engineer with 4 years of experience. "
+            "Backend: Python, Node.js, REST API design and implementation. "
+            "PostgreSQL schema design, indexing, and stored procedures. "
+            "Docker Compose for multi-container application orchestration. "
+            "Jenkins and GitHub Actions CI/CD pipeline configuration. "
+            "Celery with Redis message broker for async task queues. "
+            "Git best practices: conventional commits, PRs, and branch protection rules.",
+        ),
+        (
+            "david_kim.pdf",
+            "David Kim | david@example.com\n"
+            "Junior Developer with 1 year of Python experience. "
+            "Built simple CRUD REST endpoints using Flask. "
+            "Basic SQL queries in MySQL. "
+            "Limited experience with Docker; completed introductory tutorials. "
+            "No production CI/CD or Redis experience. "
+            "Uses Git for version control on personal projects.",
+        ),
+        (
+            "eva_patel.pdf",
+            "Eva Patel | eva@example.com\n"
+            "Backend Engineer with 6 years in Python, Django, and FastAPI. "
+            "Architected high-throughput REST APIs serving 10M requests per day. "
+            "PostgreSQL DBA: replication, connection pooling via PgBouncer, vacuum tuning. "
+            "Full Docker and Kubernetes production deployments with Helm charts and Argo CD. "
+            "Redis pub/sub and Celery distributed task queues for async processing. "
+            "Git flow, semantic versioning, 90 percent unit test coverage with pytest and tox. "
+            "Agile practitioner: Jira, sprint planning, retrospectives, and stakeholder demos.",
+        ),
+    ]
 
-    outcomes = ingest_resumes(resume_dir)
-    valid_resumes = tuple(o.resume for o in outcomes if o.status == ParseStatus.OK and o.resume is not None)
-    unparsed_outcomes = tuple(o for o in outcomes if o.status != ParseStatus.OK or o.resume is None)
+    _built_resumes: list[ResumeText] = []
+    _built_outcomes: list[ParseOutcome] = []
+    for fname, raw_text in _SEED_RESUME_DATA:
+        text = normalize_ws(raw_text)
+        sha = Sha256(hashlib.sha256(text.encode("utf-8")).hexdigest())
+        cid = CandidateId(content_id(sha))
+        resume = ResumeText(candidate_id=cid, filename=fname, sha256=sha, text=text, char_count=len(text))
+        _built_resumes.append(resume)
+        _built_outcomes.append(ParseOutcome(filename=fname, status=ParseStatus.OK, resume=resume))
 
-    if not valid_resumes:
-        job = Job(
-            job_id=job_id,
-            title=title,
-            jd_text=jd_text,
-            jd_sha256=jd_sha,
-            requirements=reqs,
-            resume_dir=resume_dir,
-            parse_outcomes=outcomes,
-            ranking=None,
-            status="draft",
-            ranker_used=None,
-            all_rankings=None,
-        )
-        _job_store[job_id] = job
-        return job
+    valid_resumes = tuple(_built_resumes)
+    unparsed_outcomes: tuple = ()
+    outcomes = tuple(_built_outcomes)
 
     seed_as_of = AsOfDate("2026-01-01")
 
@@ -781,6 +823,20 @@ def get_job_ranking(job_id: str, ranker: str | None = None):
     if ranker and job.all_rankings and ranker in job.all_rankings:
         target_ranking = job.all_rankings[ranker]
         selected_ranker = ranker
+    elif target_ranking is None and job.all_rankings:
+        if "r0_lexical" in job.all_rankings:
+            target_ranking = job.all_rankings["r0_lexical"]
+            selected_ranker = "r0_lexical"
+        else:
+            first_k = next(iter(job.all_rankings.keys()))
+            target_ranking = job.all_rankings[first_k]
+            selected_ranker = first_k
+
+    if target_ranking is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Job '{job_id}' has not been ranked yet. Run POST /api/jobs/{job_id}/run first.",
+        )
 
     valid_resumes = tuple(
         o.resume for o in (job.parse_outcomes or ())

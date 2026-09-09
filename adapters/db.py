@@ -356,9 +356,14 @@ class DatabaseAdapter:
                 )
 
         ranker_used = row[8] if isinstance(row, tuple) else row["ranker_used"]
-        main_ranking = all_rankings.get(ranker_used) if (ranker_used and all_rankings) else (
-            next(iter(all_rankings.values())) if all_rankings else None
-        )
+        main_ranking = None
+        if all_rankings:
+            if ranker_used and ranker_used in all_rankings:
+                main_ranking = all_rankings[ranker_used]
+            elif "r0_lexical" in all_rankings:
+                main_ranking = all_rankings["r0_lexical"]
+            else:
+                main_ranking = next(iter(all_rankings.values()))
 
         return Job(
             job_id=row[0] if isinstance(row, tuple) else row["job_id"],
