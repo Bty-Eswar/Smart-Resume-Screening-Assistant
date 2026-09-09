@@ -160,9 +160,46 @@ def ensure_seed_job() -> Job | None:
         _job_store[job_id] = job
         return job
 
-    job_embeddings, resume_embeddings = compute_job_embeddings(jd_text, valid_resumes)
-    r0 = rank_lexical(valid_resumes, reqs, unparsed=unparsed_outcomes, k=10)
-    r1 = rank_embedding(resume_embeddings, job_embeddings, unparsed=unparsed_outcomes, k=10)
+    seed_as_of = AsOfDate("2026-01-01")
+
+    # Build IDF table from valid resumes (same logic as _run_r0_lexical)
+    n_docs = len(valid_resumes)
+    doc_token_sets = [
+        {_stem(t) for t in re.findall(r"\b[a-zA-Z0-9]+\b", r.text)}
+        for r in valid_resumes
+    ]
+    all_stems: set[str] = set()
+    for s_set in doc_token_sets:
+        all_stems.update(s_set)
+    for req in reqs:
+        for t in req.tokens:
+            all_stems.add(_stem(t))
+        for w in re.findall(r"\b[a-zA-Z0-9]+\b", req.text):
+            all_stems.add(_stem(w))
+    idf_table: dict[str, int] = {}
+    for st in all_stems:
+        doc_freq = sum(1 for s_set in doc_token_sets if st in s_set)
+        idf_table[st] = max(1, (n_docs * 1000) // max(1, doc_freq))
+
+    r0 = rank_lexical(
+        resumes=valid_resumes,
+        requirements=reqs,
+        idf_table=idf_table,
+        unparsed=unparsed_outcomes,
+        k=10,
+        as_of=seed_as_of,
+    )
+
+    jd_vec, resume_vecs = compute_job_embeddings(jd_text, valid_resumes)
+    r1 = rank_embedding(
+        resumes=valid_resumes,
+        jd_vector=jd_vec,
+        resume_vectors=resume_vecs,
+        unparsed=unparsed_outcomes,
+        k=10,
+        as_of=seed_as_of,
+    )
+
     all_rankings = {
         "r0_lexical": r0,
         "r1_embedding": r1,
