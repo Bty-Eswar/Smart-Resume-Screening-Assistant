@@ -40,6 +40,18 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("compare_all");
   const [switchingTab, setSwitchingTab] = useState(false);
 
+  const filenameMap = React.useMemo(() => {
+    const map = {};
+    if (ranking?.comparison) {
+      ranking.comparison.forEach((row) => {
+        if (row.candidate_id && row.filename) {
+          map[row.candidate_id] = row.filename;
+        }
+      });
+    }
+    return map;
+  }, [ranking]);
+
   const loadData = async (preferredRanker = null) => {
     if (!jobId) return;
     try {
@@ -187,18 +199,6 @@ export default function Dashboard() {
     acc[r.id] = r.text;
     return acc;
   }, {});
-
-  const filenameMap = React.useMemo(() => {
-    const map = {};
-    if (ranking?.comparison) {
-      ranking.comparison.forEach((row) => {
-        if (row.candidate_id && row.filename) {
-          map[row.candidate_id] = row.filename;
-        }
-      });
-    }
-    return map;
-  }, [ranking]);
 
   const renderCandidateCard = (candidate, isAbstain = false) => {
     const isExpanded = expandedCandidates.has(candidate.candidate_id);
