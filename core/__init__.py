@@ -1,0 +1,1 @@
+# PURE core — determinism boundary
