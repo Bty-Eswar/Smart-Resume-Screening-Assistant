@@ -1,0 +1,3 @@
+# Keep markdown documents byte-identical and forbid line ending normalization
+*.md -text
+* text=auto eol=lf
