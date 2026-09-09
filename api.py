@@ -51,6 +51,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/health")
+@app.get("/api/health")
+def health_check():
+    """Health check endpoint for reverse proxy and frontend connectivity probe."""
+    return {"status": "ok", "service": "shortlist"}
+
 from adapters.db import db, Job
 
 
