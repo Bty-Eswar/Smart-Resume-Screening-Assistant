@@ -623,6 +623,7 @@ def render_dashboard_html(ranking_data: dict[str, Any] | None = None) -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
 def get_dashboard():
     """Serve the interactive screening dashboard."""
     return HTMLResponse(content=render_dashboard_html(), status_code=200)

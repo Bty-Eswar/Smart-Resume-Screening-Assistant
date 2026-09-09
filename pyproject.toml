@@ -1,3 +1,18 @@
+[project]
+name = "shortlist"
+version = "0.1.0"
+description = "Deterministic resume screening assistant adhering to Determinism Charter D1-D14"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest>=8.0.0",
+    "pdfplumber>=0.11.0",
+    "python-docx>=1.1.0",
+    "pydantic>=2.6.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

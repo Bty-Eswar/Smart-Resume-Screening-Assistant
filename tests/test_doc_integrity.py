@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 import pytest
 
@@ -172,3 +174,30 @@ def test_formatters_exclude_markdown_and_docs_remain_byte_identical():
     for rel_path in REQUIRED_DOCS:
         assert pre_hashes[rel_path] == post_hashes[rel_path], f"{rel_path} mutated!"
         print(f"[PASS] Byte-identity preserved for {rel_path}: {post_hashes[rel_path]}")
+
+
+def test_collected_test_count_matches_committed_baseline():
+    """Assert collected test count matches committed baseline in both directions."""
+    baseline_path = REPO_ROOT / "tests" / "baseline_test_count.json"
+    assert baseline_path.is_file(), f"Baseline test count file missing at {baseline_path}"
+    with open(baseline_path, "r", encoding="utf-8") as f:
+        baseline_data = json.load(f)
+    expected_count = baseline_data["baseline_test_count"]
+
+    # Subprocess collect-only run to obtain the exact count
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    m = re.search(r"(\d+)\s+(?:tests\s+collected|items)", result.stdout)
+    assert m, f"Could not parse collected test count from output: {result.stdout}"
+    realised_count = int(m.group(1))
+
+    print(f"\n[PASS] Collected test count: {realised_count} | Committed baseline: {expected_count}")
+    assert realised_count == expected_count, (
+        f"Test count mismatch (both directions): collected {realised_count} != baseline {expected_count}"
+    )
+
