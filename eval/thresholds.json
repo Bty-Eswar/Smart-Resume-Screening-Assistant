@@ -1,0 +1,47 @@
+{
+  "t1_parse_success": {
+    "target": 0.90,
+    "comparator": ">=",
+    "description": "Resume parsing success rate >= 90% (PDD T1)"
+  },
+  "t2_evidence_validity": {
+    "target": 0.95,
+    "comparator": ">=",
+    "description": "Evidence span validity rate >= 95% (PDD T2)"
+  },
+  "t3_self_consistency_jaccard": {
+    "target": 0.80,
+    "comparator": ">=",
+    "description": "Top-10 Jaccard consistency across shuffled runs >= 0.80 (PDD T3)"
+  },
+  "t4_bias_score_delta": {
+    "target": 0.05,
+    "comparator": "<=",
+    "description": "Maximum candidate score delta under name swaps <= 0.05 (PDD T4)"
+  },
+  "t4_bias_rank_shift": {
+    "target": 1.0,
+    "comparator": "<=",
+    "description": "Mean rank shift under name swaps <= 1.0 positions (PDD T4)"
+  },
+  "t5_win_claim_lift": {
+    "target": 0.10,
+    "comparator": ">=",
+    "description": "Precision@10 lift of R2 over R0 >= +0.10 (PDD T5)"
+  },
+  "t6_latency_wall_clock": {
+    "target": 90,
+    "comparator": "<=",
+    "description": "40 resumes scored in <= 90s wall clock (PDD T6)"
+  },
+  "t7_cost_max_usd": {
+    "target": 2.00,
+    "comparator": "<=",
+    "description": "Cost <= $2.00 per 40-resume run (PDD T7)"
+  },
+  "t8_label_agreement_kappa": {
+    "target": 0.60,
+    "comparator": ">=",
+    "description": "Cohen's kappa between labelers >= 0.60 (PDD T8)"
+  }
+}

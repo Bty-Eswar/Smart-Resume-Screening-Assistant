@@ -1,0 +1,25 @@
+# config.toml — SDD §6 Configuration
+[run]
+k = 10
+as_of = "2026-01-01"
+
+[scoring]
+high_weight_threshold_bp = 1000
+min_confidence_bp = 5000
+
+[ingest]
+min_text_chars = 200
+allowed_extensions = ["pdf", "docx"]
+
+[model]
+judge_model_id = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+prompt_version = "v1"
+temperature = 0
+max_concurrency = 8
+
+[paths]
+corpus_dir = "eval/corpus"
+gold_csv = "eval/gold.csv"
+holdout_txt = "eval/holdout.txt"
+thresholds_json = "eval/thresholds.json"
+cache_dir = "fixtures/judgements"
