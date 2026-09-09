@@ -41,6 +41,8 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("compare_all");
   const [switchingTab, setSwitchingTab] = useState(false);
 
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState(new Set());
+
   const filenameMap = React.useMemo(() => {
     const map = {};
     if (ranking?.comparison) {
@@ -53,126 +55,78 @@ export default function Dashboard() {
     return map;
   }, [ranking]);
 
-  const acceptedCount = React.useMemo(() => {
-    let count = 0;
+  const allCandidateIds = React.useMemo(() => {
     if (ranking?.comparison && ranking.comparison.length > 0) {
-      ranking.comparison.forEach((row) => {
-        const v = row.r2?.verdict || row.r0?.verdict || row.verdict;
-        if (v === "accept") count++;
-      });
-    } else if (ranking?.ranked) {
-      ranking.ranked.forEach((c) => {
-        if (c.verdict === "accept") count++;
-      });
+      return ranking.comparison.map((r) => r.candidate_id);
     }
-    return count;
+    return (ranking?.ranked || []).map((c) => c.candidate_id);
   }, [ranking]);
 
-  const exportCSV = (onlyAccepted = false) => {
-    let candidatesToExport = [];
-
+  useEffect(() => {
     if (ranking?.comparison && ranking.comparison.length > 0) {
-      candidatesToExport = ranking.comparison.map((row) => {
-        const verdict = row.r2?.verdict || row.r0?.verdict || row.verdict || "unreviewed";
-        return {
-          filename: row.filename || filenameMap[row.candidate_id] || row.candidate_id,
-          candidate_id: row.candidate_id,
-          verdict: verdict,
-          consensus: row.consensus || "Standard Consensus",
-          avg_match: row.avg_score_bp != null ? (row.avg_score_bp / 100).toFixed(1) + "%" : "—",
-          r0_score: row.r0?.score_bp != null ? (row.r0.score_bp / 100).toFixed(1) + "%" : "—",
-          r0_rank: row.r0?.rank ? `#${row.r0.rank}` : (row.r0?.abstain ? "Abstain" : "—"),
-          r1_score: row.r1?.score_bp != null ? (row.r1.score_bp / 100).toFixed(1) + "%" : "—",
-          r1_rank: row.r1?.rank ? `#${row.r1.rank}` : (row.r1?.abstain ? "Abstain" : "—"),
-          r2_score: row.r2?.score_bp != null ? (row.r2.score_bp / 100).toFixed(1) + "%" : "—",
-          r2_rank: row.r2?.rank ? `#${row.r2.rank}` : (row.r2?.abstain ? "Abstain" : "—"),
-          criteria_met: row.r2?.met_count != null ? row.r2.met_count : "—",
-        };
+      const accepted = new Set();
+      ranking.comparison.forEach((row) => {
+        const v = row.r2?.verdict || row.r0?.verdict || row.verdict;
+        if (v === "accept") accepted.add(row.candidate_id);
       });
+      if (accepted.size > 0) {
+        setSelectedCandidateIds(accepted);
+      } else {
+        setSelectedCandidateIds(new Set(ranking.comparison.map((r) => r.candidate_id)));
+      }
     } else if (ranking?.ranked && ranking.ranked.length > 0) {
-      const allEntries = [...(ranking.ranked || []), ...(ranking.abstain_band || [])];
-      candidatesToExport = allEntries.map((c) => ({
-        filename: c.filename || filenameMap[c.candidate_id] || c.candidate_id,
-        candidate_id: c.candidate_id,
-        verdict: c.verdict || "unreviewed",
-        consensus: c.verdict === "accept" ? "Shortlisted" : "Standard",
-        avg_match: (c.score_bp / 100).toFixed(1) + "%",
-        r0_score: "—",
-        r0_rank: "—",
-        r1_score: "—",
-        r1_rank: "—",
-        r2_score: (c.score_bp / 100).toFixed(1) + "%",
-        r2_rank: c.rank ? `#${c.rank}` : "Abstain",
-        criteria_met: c.met_count != null ? c.met_count : "—",
-      }));
+      const accepted = new Set();
+      ranking.ranked.forEach((c) => {
+        if (c.verdict === "accept") accepted.add(c.candidate_id);
+      });
+      if (accepted.size > 0) {
+        setSelectedCandidateIds(accepted);
+      } else {
+        setSelectedCandidateIds(new Set(ranking.ranked.map((c) => c.candidate_id)));
+      }
     }
+  }, [ranking?.comparison?.length, ranking?.ranked?.length]);
 
-    if (onlyAccepted) {
-      candidatesToExport = candidatesToExport.filter((c) => c.verdict === "accept");
+  const toggleCandidateSelect = (candidateId) => {
+    setSelectedCandidateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(candidateId)) {
+        next.delete(candidateId);
+      } else {
+        next.add(candidateId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedCandidateIds.size === allCandidateIds.length) {
+      setSelectedCandidateIds(new Set());
+    } else {
+      setSelectedCandidateIds(new Set(allCandidateIds));
     }
+  };
 
-    if (candidatesToExport.length === 0) {
-      alert(
-        onlyAccepted
-          ? "No candidates have been marked as 'Accept' yet. Click the 'Accept' button next to candidates you wish to shortlist, then click 'Export Accepted CSV'."
-          : "No candidate evaluation data available to export."
-      );
-      return;
+  const exportCSV = (onlySelected = true) => {
+    const selectedIds =
+      onlySelected && selectedCandidateIds.size > 0
+        ? Array.from(selectedCandidateIds)
+        : [];
+    const query = selectedIds.length > 0 ? `?candidates=${encodeURIComponent(selectedIds.join(","))}` : "";
+    const downloadUrl = `http://127.0.0.1:8000/api/jobs/${jobId}/export${query}`;
+
+    try {
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.setAttribute("download", `shortlisted_candidates_${jobId}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+      }, 1000);
+    } catch (err) {
+      window.open(downloadUrl, "_blank");
     }
-
-    const headers = [
-      "Candidate / Resume File",
-      "Candidate ID",
-      "Recruiter Verdict",
-      "Consensus Verdict",
-      "Avg Match Score",
-      "R0 Lexical Score (TF-IDF)",
-      "R0 Rank",
-      "R1 Semantic Score (Embedding)",
-      "R1 Rank",
-      "R2 LLM Score (Groq Llama 3.3)",
-      "R2 Rank",
-      "Criteria Met",
-    ];
-
-    const escapeCSV = (val) => {
-      if (val == null) return '""';
-      const str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
-    };
-
-    const csvContent = [
-      headers.join(","),
-      ...candidatesToExport.map((row) =>
-        [
-          escapeCSV(row.filename),
-          escapeCSV(row.candidate_id),
-          escapeCSV(row.verdict.toUpperCase()),
-          escapeCSV(row.consensus),
-          escapeCSV(row.avg_match),
-          escapeCSV(row.r0_score),
-          escapeCSV(row.r0_rank),
-          escapeCSV(row.r1_score),
-          escapeCSV(row.r1_rank),
-          escapeCSV(row.r2_score),
-          escapeCSV(row.r2_rank),
-          escapeCSV(row.criteria_met),
-        ].join(",")
-      ),
-    ].join("\r\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    const dateStr = new Date().toISOString().slice(0, 10);
-    const sanitizedTitle = (job?.title || "Screening").replace(/[^a-zA-Z0-9_-]/g, "_");
-    const filenamePrefix = onlyAccepted ? "shortlisted_accepted_candidates" : "all_screened_candidates";
-    link.setAttribute("download", `${filenamePrefix}_${sanitizedTitle}_${dateStr}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const loadData = async (preferredRanker = null) => {
@@ -269,6 +223,9 @@ export default function Dashboard() {
     }));
 
     setUpdatingCandidate((prev) => ({ ...prev, [candidateId]: true }));
+    if (newVerdict === "accept") {
+      setSelectedCandidateIds((prev) => new Set([...prev, candidateId]));
+    }
 
     try {
       await postVerdict(jobId, candidateId, newVerdict);
@@ -361,6 +318,18 @@ export default function Dashboard() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <input
+              type="checkbox"
+              checked={selectedCandidateIds.has(candidate.candidate_id)}
+              onChange={() => toggleCandidateSelect(candidate.candidate_id)}
+              style={{
+                cursor: "pointer",
+                width: "18px",
+                height: "18px",
+                accentColor: "#6366f1",
+              }}
+              title="Select candidate for CSV export"
+            />
             <div
               style={{
                 width: "38px",
@@ -610,15 +579,6 @@ export default function Dashboard() {
               <span>As Of: <strong>{ranking?.as_of}</strong></span>
             </span>
             <button
-              onClick={() => handleTriggerRanker("compare_all")}
-              disabled={switchingTab}
-              className="btn btn-secondary"
-              style={{ fontSize: "12px", padding: "6px 12px", gap: "6px" }}
-            >
-              <RefreshCw size={13} className={switchingTab ? "spin-animation" : ""} />
-              <span>Re-run All 3</span>
-            </button>
-            <button
               type="button"
               onClick={() => exportCSV(true)}
               className="btn btn-primary"
@@ -629,10 +589,10 @@ export default function Dashboard() {
                 background: "linear-gradient(135deg, #10b981, #059669)",
                 fontWeight: 600,
               }}
-              title="Download selected / accepted candidates as a CSV file"
+              title="Download selected candidates as a CSV file"
             >
               <Download size={14} />
-              <span>Export Accepted ({acceptedCount}) CSV</span>
+              <span>Export Selected ({selectedCandidateIds.size}) CSV</span>
             </button>
             <button
               type="button"
@@ -760,10 +720,10 @@ export default function Dashboard() {
                     background: "linear-gradient(135deg, #10b981, #059669)",
                     fontWeight: 600,
                   }}
-                  title="Download selected / accepted candidates as a CSV file"
+                  title="Download selected candidates as a CSV file"
                 >
                   <Download size={13} />
-                  <span>Export Accepted ({acceptedCount})</span>
+                  <span>Export Selected ({selectedCandidateIds.size})</span>
                 </button>
                 <button
                   type="button"
@@ -775,7 +735,6 @@ export default function Dashboard() {
                   <Download size={13} />
                   <span>Export All</span>
                 </button>
-                <span className="badge badge-success" style={{ fontSize: "11px" }}>Unbiased Consensus</span>
                 <span className="badge badge-info" style={{ fontSize: "11px" }}>Verifiable Proof Spans</span>
               </div>
             </div>
@@ -784,8 +743,16 @@ export default function Dashboard() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px", textAlign: "left" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--text-muted)", fontSize: "12px", textTransform: "uppercase" }}>
+                    <th style={{ width: "40px", padding: "12px 14px", textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={allCandidateIds.length > 0 && selectedCandidateIds.size === allCandidateIds.length}
+                        onChange={toggleSelectAll}
+                        style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "#6366f1" }}
+                        title="Select or deselect all candidates"
+                      />
+                    </th>
                     <th style={{ padding: "12px 14px" }}>Candidate / Resume</th>
-                    <th style={{ padding: "12px 14px" }}>Consensus Verdict</th>
                     <th style={{ padding: "12px 14px" }}>Avg Match</th>
                     <th style={{ padding: "12px 14px" }}>⚡ R0 Lexical</th>
                     <th style={{ padding: "12px 14px" }}>🧠 R1 Embedding</th>
@@ -807,8 +774,18 @@ export default function Dashboard() {
                         style={{
                           borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
                           transition: "background 0.2s ease",
+                          background: selectedCandidateIds.has(row.candidate_id) ? "rgba(99, 102, 241, 0.04)" : "transparent",
                         }}
                       >
+                        <td style={{ width: "40px", padding: "14px", textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedCandidateIds.has(row.candidate_id)}
+                            onChange={() => toggleCandidateSelect(row.candidate_id)}
+                            style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "#6366f1" }}
+                            title="Select candidate for CSV export"
+                          />
+                        </td>
                         <td style={{ padding: "14px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <FileText size={16} color="#6366f1" />
@@ -819,21 +796,6 @@ export default function Dashboard() {
                           <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px", fontFamily: "monospace" }}>
                             ID: {row.candidate_id.substring(0, 8)}...
                           </div>
-                        </td>
-
-                        <td style={{ padding: "14px" }}>
-                          <span
-                            className={`badge ${
-                              row.consensus.includes("Strong")
-                                ? "badge-success"
-                                : row.consensus.includes("Advantage")
-                                ? "badge-info"
-                                : "badge-neutral"
-                            }`}
-                            style={{ fontSize: "12px" }}
-                          >
-                            {row.consensus}
-                          </span>
                         </td>
 
                         <td style={{ padding: "14px" }}>

@@ -1,6 +1,7 @@
-# api.py — SDD §2 / BUILD_PROMPTS M11 Dashboard & Service
+import csv
 import datetime
 import hashlib
+import io
 import json
 import os
 import re
@@ -12,7 +13,7 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from adapters.embedding_local import compute_job_embeddings
@@ -873,6 +874,105 @@ def get_job_ranking(job_id: str, ranker: str | None = None):
     resp_data["comparison"] = comparison
     _enrich_ranking_dict(resp_data, job)
     return resp_data
+
+
+@app.get("/api/jobs/{job_id}/export")
+def export_job_csv(job_id: str, candidates: str | None = None):
+    """Export screened candidates to CSV with optional candidate ID filtering."""
+    if job_id not in _job_store:
+        if job_id == "job_af87c8e68eb50d59278ad54f6cadf9c1":
+            ensure_seed_job()
+        if job_id not in _job_store:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    job = _job_store[job_id]
+
+    valid_resumes = tuple(
+        o.resume for o in (job.parse_outcomes or ())
+        if o.status == ParseStatus.OK and o.resume is not None
+    )
+
+    comparison = _build_candidate_comparison(
+        valid_resumes,
+        (job.all_rankings or {}).get("r0_lexical"),
+        (job.all_rankings or {}).get("r1_embedding"),
+        (job.all_rankings or {}).get("r2_llm"),
+    )
+
+    selected_ids = set(c.strip() for c in candidates.split(",") if c.strip()) if candidates else None
+    filtered_rows = comparison
+    if selected_ids:
+        filtered_rows = [
+            r for r in comparison
+            if r["candidate_id"] in selected_ids
+            or any(r["candidate_id"].startswith(s) or s.startswith(r["candidate_id"]) for s in selected_ids)
+        ]
+
+    buffer = io.StringIO()
+    # Write UTF-8 BOM so Excel opens with proper encoding
+    buffer.write("\ufeff")
+    writer = csv.writer(buffer)
+    writer.writerow([
+        "Candidate / Resume File",
+        "Candidate ID",
+        "Recruiter Verdict",
+        "Avg Match Score",
+        "R0 Lexical Score (TF-IDF)",
+        "R0 Rank",
+        "R1 Semantic Score (Embedding)",
+        "R1 Rank",
+        "R2 LLM Score (Groq Llama 3.3)",
+        "R2 Rank",
+        "Criteria Met",
+    ])
+
+    for row in filtered_rows:
+        verdict = (
+            (row.get("r2") or {}).get("verdict")
+            or (row.get("r0") or {}).get("verdict")
+            or "UNREVIEWED"
+        )
+        avg_score = f"{row.get('avg_score_bp', 0) / 100:.1f}%"
+        r0 = row.get("r0") or {}
+        r1 = row.get("r1") or {}
+        r2 = row.get("r2") or {}
+
+        r0_score = f"{r0['score_bp'] / 100:.1f}%" if "score_bp" in r0 else "—"
+        r0_rank = f"#{r0['rank']}" if r0.get("rank") else ("Abstain" if r0.get("abstain") else "—")
+
+        r1_score = f"{r1['score_bp'] / 100:.1f}%" if "score_bp" in r1 else "—"
+        r1_rank = f"#{r1['rank']}" if r1.get("rank") else ("Abstain" if r1.get("abstain") else "—")
+
+        r2_score = f"{r2['score_bp'] / 100:.1f}%" if "score_bp" in r2 else "—"
+        r2_rank = f"#{r2['rank']}" if r2.get("rank") else ("Abstain" if r2.get("abstain") else "—")
+
+        criteria_met = r2.get("met_count", "—")
+
+        writer.writerow([
+            row.get("filename", f"Candidate {row['candidate_id'][:8]}"),
+            row["candidate_id"],
+            verdict.upper(),
+            avg_score,
+            r0_score,
+            r0_rank,
+            r1_score,
+            r1_rank,
+            r2_score,
+            r2_rank,
+            criteria_met,
+        ])
+
+    buffer.seek(0)
+    safe_title = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in job.title)
+    filename = f"shortlisted_candidates_{safe_title}.csv"
+
+    return StreamingResponse(
+        io.BytesIO(buffer.getvalue().encode("utf-8")),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
 
 
 @app.post("/api/jobs/{job_id}/verdict")
