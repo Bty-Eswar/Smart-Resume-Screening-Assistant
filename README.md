@@ -32,13 +32,25 @@ pytest
 
 ---
 
-## Running the Application & Evaluation
+## Running the Full App
 
-### Launch the Interactive Dashboard
+To launch the complete end-to-end system (FastAPI backend + React Vite frontend):
+
+**Terminal 1 (Backend API):**
 ```bash
-uvicorn api:app --host 127.0.0.1 --port 8000
+uvicorn api:app --reload --port 8000
 ```
-Open `http://127.0.0.1:8000` or `http://127.0.0.1:8000/dashboard` to view the candidate rankings, inspect expandable per-requirement evidence spans, review the visually distinct abstain band, and record review verdicts.
+
+**Terminal 2 (React Frontend):**
+```bash
+cd frontend && npm run dev
+```
+
+Open `http://127.0.0.1:5173` in your browser to interact with the full screening workflow. The standalone backend API and server-rendered fallback dashboard remain available at `http://127.0.0.1:8000`.
+
+### 60-Second Hackathon Overview
+
+Shortlist is an audit-grade resume screening assistant built around the **Determinism Charter (D1–D14)**. Rather than relying on opaque AI summaries or arbitrary floating-point scores, Shortlist operates as a transparent three-stage pipeline: (1) **Job & Skill Setup**: The recruiter enters a job description, and the engine extracts discrete qualifications with tunable integer weights (in basis points); (2) **Audited Ingestion**: Resumes are parsed with transparent, visible failure auditing (PDD R3)—distinguishing valid text, corrupted files, and scanned PDFs lacking a text layer; (3) **Deterministic Ranking & Evidence Dashboard**: Resumes are ranked deterministically with exact, verbatim character-level evidence spans extracted directly from the resume text for every requirement. When candidate qualifications are tied across all criteria, they enter an unranked **Abstain Band** (Charter D5) for mandatory human review rather than arbitrary tie-breaking, and recruiter verdicts (Accept/Reject) persist immediately.
 
 ---
 

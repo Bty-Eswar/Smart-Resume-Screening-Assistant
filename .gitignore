@@ -8,3 +8,13 @@ htmlcov/
 env/
 venv/
 *.tmp
+.env
+.env.*
+.groq_cache/
+data/
+*.db
+*.sqlite
+*.sqlite3
+frontend/dist/
+frontend/node_modules/
+uvicorn_smoke.log

@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shortlist-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: shortlist
+      POSTGRES_PASSWORD: shortlist_password
+      POSTGRES_DB: shortlist_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortlist -d shortlist_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.backend
+    container_name: shortlist-backend
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://shortlist:shortlist_password@postgres:5432/shortlist_db
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    volumes:
+      - app_data:/app/data
+      - groq_cache:/app/.groq_cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.frontend
+    container_name: shortlist-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  app_data:
+  groq_cache:
