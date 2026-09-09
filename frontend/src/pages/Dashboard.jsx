@@ -188,10 +188,33 @@ export default function Dashboard() {
     return acc;
   }, {});
 
+  const filenameMap = React.useMemo(() => {
+    const map = {};
+    if (ranking?.comparison) {
+      ranking.comparison.forEach((row) => {
+        if (row.candidate_id && row.filename) {
+          map[row.candidate_id] = row.filename;
+        }
+      });
+    }
+    return map;
+  }, [ranking]);
+
   const renderCandidateCard = (candidate, isAbstain = false) => {
     const isExpanded = expandedCandidates.has(candidate.candidate_id);
     const scorePct = (candidate.score_bp / 100).toFixed(1);
     const isUpdating = updatingCandidate[candidate.candidate_id];
+
+    // Format readable candidate name and raw filename
+    const rawFilename = candidate.filename || filenameMap[candidate.candidate_id] || "";
+    const cleanName = rawFilename
+      ? rawFilename
+          .replace(/\.(pdf|docx)$/i, "")
+          .replace(/^[0-9]+[_\s-]+/, "")
+          .replace(/[_-]+/g, " ")
+          .trim()
+      : "";
+    const displayTitle = cleanName || rawFilename || `Candidate ${candidate.candidate_id.substring(0, 8)}`;
 
     return (
       <div
@@ -217,8 +240,8 @@ export default function Dashboard() {
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
             <div
               style={{
-                width: "36px",
-                height: "36px",
+                width: "38px",
+                height: "38px",
                 borderRadius: "10px",
                 background: isAbstain
                   ? "rgba(245, 158, 11, 0.2)"
@@ -232,22 +255,56 @@ export default function Dashboard() {
                 fontWeight: 800,
                 fontSize: "15px",
                 fontFamily: "Outfit, sans-serif",
+                flexShrink: 0,
               }}
             >
               {isAbstain ? "TIED" : `#${candidate.rank}`}
             </div>
 
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                  <FileText size={17} color="#6366f1" />
+                  <span
+                    style={{
+                      fontSize: "16px",
+                      fontWeight: 700,
+                      color: "var(--text-primary)",
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {displayTitle}
+                  </span>
+                </div>
+
+                {rawFilename && (
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      color: "var(--text-secondary)",
+                      background: "rgba(255, 255, 255, 0.04)",
+                      padding: "2px 8px",
+                      borderRadius: "4px",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    {rawFilename}
+                  </span>
+                )}
+
                 <span
                   style={{
                     fontFamily: "monospace",
-                    fontSize: "14px",
-                    fontWeight: 600,
-                    color: "var(--text-primary)",
+                    fontSize: "11px",
+                    color: "var(--text-muted)",
+                    background: "rgba(255, 255, 255, 0.02)",
+                    padding: "2px 6px",
+                    borderRadius: "4px",
                   }}
+                  title={`Full Candidate SHA256 ID: ${candidate.candidate_id}`}
                 >
-                  {candidate.candidate_id}
+                  ID: {candidate.candidate_id.substring(0, 8)}...
                 </span>
 
                 <span
@@ -265,7 +322,7 @@ export default function Dashboard() {
                 </span>
               </div>
 
-              <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "4px" }}>
+              <div style={{ fontSize: "13px", color: "var(--text-secondary)", marginTop: "5px" }}>
                 Criteria Met: <strong>{candidate.met_count}</strong> of {totalReqCount} (High-Weight Met: {candidate.high_weight_met_count || 0})
               </div>
             </div>
@@ -342,11 +399,14 @@ export default function Dashboard() {
               gap: "12px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-              <ShieldCheck size={16} color="#6366f1" />
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)" }}>
-                Auditable Verification Evidence (Charter D8 Verbatim Invariant)
-              </span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "6px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <ShieldCheck size={18} color="#6366f1" />
+                <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>
+                  Auditable Evidence for {displayTitle} {rawFilename && cleanName ? `(${rawFilename})` : ""}
+                </span>
+              </div>
+              <span className="badge badge-info" style={{ fontSize: "11px" }}>Charter D8 Verbatim Invariant</span>
             </div>
 
             {candidate.judgements?.map((j, jIdx) => {
@@ -591,9 +651,16 @@ export default function Dashboard() {
                         }}
                       >
                         <td style={{ padding: "14px" }}>
-                          <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{row.filename}</div>
-                          <div style={{ fontFamily: "monospace", fontSize: "12px", color: "var(--text-muted)" }}>
-                            {row.candidate_id.substring(0, 16)}...
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <FileText size={16} color="#6366f1" />
+                            <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "14px" }}>
+                              {row.filename.replace(/\.(pdf|docx)$/i, "").replace(/^[0-9]+[_\s-]+/, "").replace(/[_-]+/g, " ").trim() || row.filename}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px", display: "flex", gap: "6px", alignItems: "center" }}>
+                            <span style={{ fontFamily: "monospace", fontSize: "11px" }}>{row.filename}</span>
+                            <span>•</span>
+                            <span style={{ fontFamily: "monospace", fontSize: "11px" }}>ID: {row.candidate_id.substring(0, 8)}...</span>
                           </div>
                         </td>
 
@@ -719,12 +786,35 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="glass-card" style={{ padding: "16px 20px", background: "rgba(245, 158, 11, 0.04)", border: "1px solid rgba(245, 158, 11, 0.25)" }}>
-              <div style={{ fontSize: "12px", color: "#fbbf24", textTransform: "uppercase", fontWeight: 600 }}>
+            <div
+              className="glass-card"
+              style={{
+                padding: "16px 20px",
+                background: abstainList.length > 0 ? "rgba(245, 158, 11, 0.05)" : "rgba(16, 185, 129, 0.04)",
+                border: abstainList.length > 0 ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid rgba(16, 185, 129, 0.2)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "12px",
+                  color: abstainList.length > 0 ? "#fbbf24" : "#10b981",
+                  textTransform: "uppercase",
+                  fontWeight: 600,
+                }}
+              >
                 Abstain Band (Tied)
               </div>
-              <div id="abstain-count" style={{ fontSize: "26px", fontWeight: 800, fontFamily: "Outfit", color: "#fbbf24", marginTop: "4px" }}>
-                Band Size: {abstainList.length}
+              <div
+                id="abstain-count"
+                style={{
+                  fontSize: "26px",
+                  fontWeight: 800,
+                  fontFamily: "Outfit",
+                  color: abstainList.length > 0 ? "#fbbf24" : "#10b981",
+                  marginTop: "4px",
+                }}
+              >
+                {abstainList.length > 0 ? `Band Size: ${abstainList.length}` : "0 (Resolved)"}
               </div>
             </div>
 
@@ -739,54 +829,63 @@ export default function Dashboard() {
           </div>
 
           {/* Visually Distinct Abstain Band Section (Determinism Charter D5) */}
-          <div
-            className="glass-card"
-            style={{
-              border: "1px solid rgba(245, 158, 11, 0.3)",
-              background: "rgba(245, 158, 11, 0.03)",
-              boxShadow: "0 0 25px rgba(245, 158, 11, 0.08)",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <AlertTriangle size={22} color="#f59e0b" />
-                <h3 style={{ fontSize: "18px", color: "#fef3c7" }}>
-                  Abstain Band ({abstainList.length} Candidates)
-                </h3>
-                <span className="badge badge-warning">Charter D5</span>
+          {abstainList.length > 0 ? (
+            <div
+              className="glass-card"
+              style={{
+                border: "1px solid rgba(245, 158, 11, 0.35)",
+                background: "rgba(245, 158, 11, 0.04)",
+                boxShadow: "0 0 25px rgba(245, 158, 11, 0.08)",
+                padding: "20px 24px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <AlertTriangle size={22} color="#f59e0b" />
+                  <h3 style={{ fontSize: "18px", color: "#fef3c7" }}>
+                    Abstain Band ({abstainList.length} Candidates Tied)
+                  </h3>
+                  <span className="badge badge-warning">Charter D5</span>
+                </div>
+                <span style={{ fontSize: "12px", color: "#fcd34d", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Manual Human Review Mandated
+                </span>
               </div>
-              <span style={{ fontSize: "12px", color: "#fcd34d", fontWeight: 600 }}>
-                Manual Review Mandated
-              </span>
-            </div>
 
-            <p style={{ color: "var(--text-secondary)", fontSize: "14px", lineHeight: "1.5" }}>
-              Candidates tied across all tie-break keys are placed in the Abstain Band. Shortlist strictly refuses to invent random tie-breakers.
-            </p>
+              <p style={{ color: "var(--text-secondary)", fontSize: "14px", lineHeight: "1.5" }}>
+                Candidates tied across all tie-break keys are placed in the Abstain Band. Shortlist strictly refuses to invent random tie-breakers.
+              </p>
 
-            {abstainList.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "16px" }}>
                 {abstainList.map((cand) => renderCandidateCard(cand, true))}
               </div>
-            ) : (
-              <div
-                style={{
-                  marginTop: "16px",
-                  padding: "14px 18px",
-                  background: "rgba(245, 158, 11, 0.06)",
-                  borderRadius: "var(--radius-sm)",
-                  fontSize: "13px",
-                  color: "#fbbf24",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
-              >
-                <CheckCircle2 size={16} />
-                <span>Zero tied candidates straddling rank boundary K={ranking?.k || 10}. All candidate rankings are strictly resolved.</span>
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: "12px 18px",
+                background: "rgba(16, 185, 129, 0.04)",
+                border: "1px solid rgba(16, 185, 129, 0.2)",
+                borderRadius: "var(--radius-md)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <CheckCircle2 size={18} color="#10b981" />
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
+                  Tie-Break Integrity (Charter D5):
+                </span>
+                <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+                  0 candidates tied in Abstain Band. All candidate rankings are strictly resolved with non-arbitrary scores.
+                </span>
               </div>
-            )}
-          </div>
+              <span className="badge badge-success" style={{ fontSize: "11px" }}>0 Tied • 100% Resolved</span>
+            </div>
+          )}
 
           {/* Ranked Candidates */}
           <div>

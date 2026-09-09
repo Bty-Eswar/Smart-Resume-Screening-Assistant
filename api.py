@@ -705,6 +705,22 @@ def _build_candidate_comparison(
     return rows
 
 
+def _enrich_ranking_dict(resp_data: dict, job: Job) -> dict:
+    """Enrich ranking response with candidate filenames and readable labels from parse outcomes."""
+    filename_map = {}
+    if job.parse_outcomes:
+        for o in job.parse_outcomes:
+            if o.resume:
+                filename_map[str(o.resume.candidate_id)] = o.filename
+    for entry in resp_data.get("ranked", []):
+        cid = entry.get("candidate_id")
+        entry["filename"] = filename_map.get(cid, f"Candidate {cid[:8]}" if cid else "Candidate")
+    for entry in resp_data.get("abstain_band", []):
+        cid = entry.get("candidate_id")
+        entry["filename"] = filename_map.get(cid, f"Candidate {cid[:8]}" if cid else "Candidate")
+    return resp_data
+
+
 @app.post("/api/jobs/{job_id}/run")
 def run_job_pipeline(job_id: str, body: RunJobRequest | None = None):
     """Run ranking pipeline for a job using designated ranker (r0_lexical, r1_embedding, r2_llm, or compare_all)."""
@@ -799,6 +815,7 @@ def run_job_pipeline(job_id: str, body: RunJobRequest | None = None):
     resp_data["active_ranker"] = job.ranker_used
     resp_data["available_rankers"] = list(job.all_rankings.keys())
     resp_data["comparison"] = comparison
+    _enrich_ranking_dict(resp_data, job)
     return resp_data
 
 
@@ -854,6 +871,7 @@ def get_job_ranking(job_id: str, ranker: str | None = None):
     resp_data["active_ranker"] = selected_ranker
     resp_data["available_rankers"] = list((job.all_rankings or {}).keys())
     resp_data["comparison"] = comparison
+    _enrich_ranking_dict(resp_data, job)
     return resp_data
 
 
