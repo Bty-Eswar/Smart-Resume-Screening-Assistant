@@ -25,6 +25,7 @@ import {
   TrendingUp,
   BrainCircuit,
   Binary,
+  Download,
 } from "lucide-react";
 import { getJob, getRanking, postVerdict, runPipeline } from "../api/client";
 
@@ -51,6 +52,128 @@ export default function Dashboard() {
     }
     return map;
   }, [ranking]);
+
+  const acceptedCount = React.useMemo(() => {
+    let count = 0;
+    if (ranking?.comparison && ranking.comparison.length > 0) {
+      ranking.comparison.forEach((row) => {
+        const v = row.r2?.verdict || row.r0?.verdict || row.verdict;
+        if (v === "accept") count++;
+      });
+    } else if (ranking?.ranked) {
+      ranking.ranked.forEach((c) => {
+        if (c.verdict === "accept") count++;
+      });
+    }
+    return count;
+  }, [ranking]);
+
+  const exportCSV = (onlyAccepted = false) => {
+    let candidatesToExport = [];
+
+    if (ranking?.comparison && ranking.comparison.length > 0) {
+      candidatesToExport = ranking.comparison.map((row) => {
+        const verdict = row.r2?.verdict || row.r0?.verdict || row.verdict || "unreviewed";
+        return {
+          filename: row.filename || filenameMap[row.candidate_id] || row.candidate_id,
+          candidate_id: row.candidate_id,
+          verdict: verdict,
+          consensus: row.consensus || "Standard Consensus",
+          avg_match: row.avg_score_bp != null ? (row.avg_score_bp / 100).toFixed(1) + "%" : "—",
+          r0_score: row.r0?.score_bp != null ? (row.r0.score_bp / 100).toFixed(1) + "%" : "—",
+          r0_rank: row.r0?.rank ? `#${row.r0.rank}` : (row.r0?.abstain ? "Abstain" : "—"),
+          r1_score: row.r1?.score_bp != null ? (row.r1.score_bp / 100).toFixed(1) + "%" : "—",
+          r1_rank: row.r1?.rank ? `#${row.r1.rank}` : (row.r1?.abstain ? "Abstain" : "—"),
+          r2_score: row.r2?.score_bp != null ? (row.r2.score_bp / 100).toFixed(1) + "%" : "—",
+          r2_rank: row.r2?.rank ? `#${row.r2.rank}` : (row.r2?.abstain ? "Abstain" : "—"),
+          criteria_met: row.r2?.met_count != null ? row.r2.met_count : "—",
+        };
+      });
+    } else if (ranking?.ranked && ranking.ranked.length > 0) {
+      const allEntries = [...(ranking.ranked || []), ...(ranking.abstain_band || [])];
+      candidatesToExport = allEntries.map((c) => ({
+        filename: c.filename || filenameMap[c.candidate_id] || c.candidate_id,
+        candidate_id: c.candidate_id,
+        verdict: c.verdict || "unreviewed",
+        consensus: c.verdict === "accept" ? "Shortlisted" : "Standard",
+        avg_match: (c.score_bp / 100).toFixed(1) + "%",
+        r0_score: "—",
+        r0_rank: "—",
+        r1_score: "—",
+        r1_rank: "—",
+        r2_score: (c.score_bp / 100).toFixed(1) + "%",
+        r2_rank: c.rank ? `#${c.rank}` : "Abstain",
+        criteria_met: c.met_count != null ? c.met_count : "—",
+      }));
+    }
+
+    if (onlyAccepted) {
+      candidatesToExport = candidatesToExport.filter((c) => c.verdict === "accept");
+    }
+
+    if (candidatesToExport.length === 0) {
+      alert(
+        onlyAccepted
+          ? "No candidates have been marked as 'Accept' yet. Click the 'Accept' button next to candidates you wish to shortlist, then click 'Export Accepted CSV'."
+          : "No candidate evaluation data available to export."
+      );
+      return;
+    }
+
+    const headers = [
+      "Candidate / Resume File",
+      "Candidate ID",
+      "Recruiter Verdict",
+      "Consensus Verdict",
+      "Avg Match Score",
+      "R0 Lexical Score (TF-IDF)",
+      "R0 Rank",
+      "R1 Semantic Score (Embedding)",
+      "R1 Rank",
+      "R2 LLM Score (Groq Llama 3.3)",
+      "R2 Rank",
+      "Criteria Met",
+    ];
+
+    const escapeCSV = (val) => {
+      if (val == null) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const csvContent = [
+      headers.join(","),
+      ...candidatesToExport.map((row) =>
+        [
+          escapeCSV(row.filename),
+          escapeCSV(row.candidate_id),
+          escapeCSV(row.verdict.toUpperCase()),
+          escapeCSV(row.consensus),
+          escapeCSV(row.avg_match),
+          escapeCSV(row.r0_score),
+          escapeCSV(row.r0_rank),
+          escapeCSV(row.r1_score),
+          escapeCSV(row.r1_rank),
+          escapeCSV(row.r2_score),
+          escapeCSV(row.r2_rank),
+          escapeCSV(row.criteria_met),
+        ].join(",")
+      ),
+    ].join("\r\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const sanitizedTitle = (job?.title || "Screening").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filenamePrefix = onlyAccepted ? "shortlisted_accepted_candidates" : "all_screened_candidates";
+    link.setAttribute("download", `${filenamePrefix}_${sanitizedTitle}_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const loadData = async (preferredRanker = null) => {
     if (!jobId) return;
@@ -273,33 +396,17 @@ export default function Dashboard() {
                       letterSpacing: "-0.01em",
                     }}
                   >
-                    {displayTitle}
+                    {rawFilename || `Candidate ${candidate.candidate_id.substring(0, 8)}`}
                   </span>
                 </div>
-
-                {rawFilename && (
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--text-secondary)",
-                      background: "rgba(255, 255, 255, 0.04)",
-                      padding: "2px 8px",
-                      borderRadius: "4px",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    {rawFilename}
-                  </span>
-                )}
 
                 <span
                   style={{
                     fontFamily: "monospace",
                     fontSize: "11px",
                     color: "var(--text-muted)",
-                    background: "rgba(255, 255, 255, 0.02)",
-                    padding: "2px 6px",
+                    background: "rgba(255, 255, 255, 0.04)",
+                    padding: "2px 7px",
                     borderRadius: "4px",
                   }}
                   title={`Full Candidate SHA256 ID: ${candidate.candidate_id}`}
@@ -403,7 +510,7 @@ export default function Dashboard() {
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <ShieldCheck size={18} color="#6366f1" />
                 <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-primary)" }}>
-                  Auditable Evidence for {displayTitle} {rawFilename && cleanName ? `(${rawFilename})` : ""}
+                  Auditable Evidence for {rawFilename || displayTitle}
                 </span>
               </div>
               <span className="badge badge-info" style={{ fontSize: "11px" }}>Charter D8 Verbatim Invariant</span>
@@ -511,6 +618,32 @@ export default function Dashboard() {
               <RefreshCw size={13} className={switchingTab ? "spin-animation" : ""} />
               <span>Re-run All 3</span>
             </button>
+            <button
+              type="button"
+              onClick={() => exportCSV(true)}
+              className="btn btn-primary"
+              style={{
+                fontSize: "12px",
+                padding: "6px 14px",
+                gap: "6px",
+                background: "linear-gradient(135deg, #10b981, #059669)",
+                fontWeight: 600,
+              }}
+              title="Download selected / accepted candidates as a CSV file"
+            >
+              <Download size={14} />
+              <span>Export Accepted ({acceptedCount}) CSV</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => exportCSV(false)}
+              className="btn btn-secondary"
+              style={{ fontSize: "12px", padding: "6px 12px", gap: "6px" }}
+              title="Download all screened candidates as a CSV file"
+            >
+              <Download size={14} />
+              <span>Export All CSV</span>
+            </button>
           </div>
         </div>
 
@@ -615,7 +748,33 @@ export default function Dashboard() {
                 </p>
               </div>
 
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => exportCSV(true)}
+                  className="btn btn-primary"
+                  style={{
+                    fontSize: "12px",
+                    padding: "5px 12px",
+                    gap: "6px",
+                    background: "linear-gradient(135deg, #10b981, #059669)",
+                    fontWeight: 600,
+                  }}
+                  title="Download selected / accepted candidates as a CSV file"
+                >
+                  <Download size={13} />
+                  <span>Export Accepted ({acceptedCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportCSV(false)}
+                  className="btn btn-secondary"
+                  style={{ fontSize: "12px", padding: "5px 10px", gap: "6px" }}
+                  title="Download all candidates as a CSV file"
+                >
+                  <Download size={13} />
+                  <span>Export All</span>
+                </button>
                 <span className="badge badge-success" style={{ fontSize: "11px" }}>Unbiased Consensus</span>
                 <span className="badge badge-info" style={{ fontSize: "11px" }}>Verifiable Proof Spans</span>
               </div>
@@ -654,13 +813,11 @@ export default function Dashboard() {
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                             <FileText size={16} color="#6366f1" />
                             <span style={{ fontWeight: 700, color: "var(--text-primary)", fontSize: "14px" }}>
-                              {row.filename.replace(/\.(pdf|docx)$/i, "").replace(/^[0-9]+[_\s-]+/, "").replace(/[_-]+/g, " ").trim() || row.filename}
+                              {row.filename || `Candidate ${row.candidate_id.substring(0, 8)}`}
                             </span>
                           </div>
-                          <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px", display: "flex", gap: "6px", alignItems: "center" }}>
-                            <span style={{ fontFamily: "monospace", fontSize: "11px" }}>{row.filename}</span>
-                            <span>•</span>
-                            <span style={{ fontFamily: "monospace", fontSize: "11px" }}>ID: {row.candidate_id.substring(0, 8)}...</span>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px", fontFamily: "monospace" }}>
+                            ID: {row.candidate_id.substring(0, 8)}...
                           </div>
                         </td>
 
