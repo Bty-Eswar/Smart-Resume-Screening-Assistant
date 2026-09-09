@@ -7,7 +7,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL !== undefined
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 30000,
+  timeout: 180000,
 });
 
 export const createJob = async (title, jdText) => {

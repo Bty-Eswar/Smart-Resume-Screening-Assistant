@@ -171,7 +171,7 @@ def judge_all_concurrent(
     resumes: tuple[ResumeText, ...],
     reqs: tuple[Requirement, ...],
     judge: GroqJudge,
-    max_workers: int = 4,
+    max_workers: int = 12,
 ) -> tuple[RequirementJudgement, ...]:
     """Judge all candidate resumes against all requirements in parallel using thread pool."""
     tasks: list[tuple[ResumeText, Requirement]] = []

@@ -188,7 +188,8 @@ export default function ResumeUpload() {
       setRunningPipeline(false);
       navigate(`/jobs/${jobId}/dashboard`);
     } catch (err) {
-      setError(err.response?.data?.detail || "Pipeline run failed");
+      const detail = err.response?.data?.detail || err.message || "Pipeline run failed";
+      setError(`Screening failed: ${detail}`);
       setRunningPipeline(false);
     }
   };
